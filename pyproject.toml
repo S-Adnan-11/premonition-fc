@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools==84.2.1", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "premonition-fc"
+version = "0.1.0"
+description = "Reproducible Premier League probability forecasts and chronological evaluation"
+requires-python = ">=3.15,<3.16"
+dependencies = [
+  "pandas==3.1.1",
+  "numpy==2.5.4",
+  "scipy==1.18.1",
+  "scikit-learn==1.9.1",
+  "matplotlib==3.11.2",
+  "joblib==1.6.0",
+  "tzdata==2026.6",
+]
+
+[project.scripts]
+premonition-fc = "premonition_fc.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["premonition_fc*"]

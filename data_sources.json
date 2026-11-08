@@ -1,0 +1,14 @@
+{
+  "repositories": {
+    "football.json": {"revision": "e6744429ee395bc86f247348c6184bb08d4eb361"},
+    "england": {"revision": "9ee7a0c351805c99cc334478a9bf04b7d0432fec"}
+  },
+  "files": [
+    {"path": "football.json/2020-21/en.1.json", "sha256": "21ddf26b48469da530c51ccc4857bf1a534bda3aed08766b55185efb142e9a20", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2020-21/en.1.json"},
+    {"path": "football.json/2021-22/en.1.json", "sha256": "fbdfd426fa18fa2f8630b77de87c082734da495ac4668d6d72f29f76b73b9564", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2021-22/en.1.json"},
+    {"path": "football.json/2022-23/en.1.json", "sha256": "8d09f0f9846981626cdfec48903e1f21e7c79aabe6f92535c9e092e8e79b808b", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2022-23/en.1.json"},
+    {"path": "football.json/2023-24/en.1.json", "sha256": "03e13eafbf78dfe00d7e89dd3bf6643986eb6e8fd86c7664aeb8c5bc0bed88d0", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2023-24/en.1.json"},
+    {"path": "football.json/2024-25/en.1.json", "sha256": "c3d18f552d83382cd4b6b21127adbbfe38e7f8618ddc979fb5404f2df07d0a75", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2024-25/en.1.json"},
+    {"path": "football.json/2025-26/en.1.json", "sha256": "d6070bdf731546ccf97767f062e8af4bd26dd309dee69f6092025bf9c78f43c1", "url": "https://raw.githubusercontent.com/openfootball/football.json/e6744429ee395bc86f247348c6184bb08d4eb361/2025-26/en.1.json"}
+  ]
+}
