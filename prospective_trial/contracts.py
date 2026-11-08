@@ -56,9 +56,9 @@ def season_date(season, day):
         raise ValueError('Date does not belong to season')
 
 
-def snapshot(value, kind, mode, asof):
-    fields(value, ('version', 'mode', 'competition', 'source_id', 'observed_at_utc', 'coverage', kind))
-    if value['version'] != 1 or value['mode'] != mode or value['competition'] != 'premier-league' or not isinstance(value['source_id'], str) or not value['source_id']:
+def snapshot(value, kind, mode, asof, extra=()):
+    fields(value, ('version', 'mode', 'competition', 'source_id', 'observed_at_utc', 'coverage', kind, *extra))
+    if type(value['version']) is not int or value['version'] != 1 or value['mode'] != mode or value['competition'] != 'premier-league' or not isinstance(value['source_id'], str) or not value['source_id']:
         raise ValueError('Snapshot mode, competition or source differs')
     observed = instant(value['observed_at_utc'])
     if observed > asof or asof-observed > timedelta(hours=RULES['snapshot_max_age_hours']):
@@ -137,3 +137,54 @@ def live_gates(value, mode, now):
     if any(type(access[k]) is not int or access[k] < 0 for k in ('remaining', 'shared_reserve', 'project_allowance')) or not 0 < access['project_allowance'] <= 6 or access['remaining']-access['shared_reserve'] < access['project_allowance']:
         raise ValueError('Project allowance or shared quota is unverified')
     return value
+
+
+def slate(value, mode, asof):
+    from premonition_fc.features import bucket_start
+    observed = snapshot(value, 'fixtures', mode, asof, ('slate_id', 'expected_fixture_ids', 'omissions', 'earliest_verified_kickoff_at_utc'))
+    if not isinstance(value['slate_id'], str) or len(value['slate_id'].split(':')) != 2:
+        raise ValueError('Slate identity is required')
+    season, start = value['slate_id'].split(':')
+    if bucket_start(start) != start:
+        raise ValueError('Slate starts on Tuesday in London')
+    targets, omissions, ids, known_kickoffs = [], [], set(), []
+    for row in value['fixtures']:
+        fields(row, ('fixture_id', 'season', 'home', 'away', 'kickoff_at_utc', 'verified_at_utc', 'status'))
+        key = identity(row)
+        kickoff = instant(row['kickoff_at_utc'])
+        verified = instant(row['verified_at_utc'])
+        played = kickoff.astimezone(LONDON).date()
+        season_date(row['season'], played)
+        if row['status'] != 'scheduled' or kickoff <= asof or verified > observed or observed-verified > timedelta(hours=24):
+            raise ValueError('Kickoff is past, unconfirmed or stale')
+        if row['season'] != season or bucket_start(played.isoformat()) != start or key in ids:
+            raise ValueError('Changed/duplicate fixture or inconsistent shared slate')
+        ids.add(key)
+        known_kickoffs.append(kickoff)
+        targets.append(dict(row, played_date=played.isoformat()))
+    if not isinstance(value['omissions'], list):
+        raise ValueError('Omissions must be explicit')
+    for row in value['omissions']:
+        fields(row, ('fixture_id', 'season', 'home', 'away', 'reason'), ('kickoff_at_utc', 'verified_at_utc'))
+        key = identity(row)
+        if key in ids or row['season'] != season or not isinstance(row['reason'], str) or not row['reason'].strip():
+            raise ValueError('Invalid or duplicate omission')
+        ids.add(key)
+        if 'kickoff_at_utc' in row or 'verified_at_utc' in row:
+            if 'kickoff_at_utc' not in row or 'verified_at_utc' not in row:
+                raise ValueError('Known omitted kickoff needs its verification time')
+            kickoff, verified = instant(row['kickoff_at_utc']), instant(row['verified_at_utc'])
+            if verified > observed or observed-verified > timedelta(hours=24) or bucket_start(kickoff.astimezone(LONDON).date().isoformat()) != start:
+                raise ValueError('Omitted kickoff is unverified or outside the slate')
+            known_kickoffs.append(kickoff)
+        omissions.append(row)
+    expected = value['expected_fixture_ids']
+    if not isinstance(expected, list) or any(not isinstance(k, str) for k in expected) or len(expected) != len(set(expected)) or set(expected) != ids or not ids:
+        raise ValueError('Every expected fixture needs eligibility or a pre-result omission')
+    bound = value['earliest_verified_kickoff_at_utc']
+    if known_kickoffs:
+        if instant(bound) != min(known_kickoffs) or instant(bound) <= asof:
+            raise ValueError('Earliest verified slate kickoff includes omitted fixtures and must follow issue')
+    elif bound is not None:
+        raise ValueError('No verified kickoff exists for the declared bound')
+    return targets, omissions

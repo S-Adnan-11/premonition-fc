@@ -67,7 +67,8 @@ class FitTests(unittest.TestCase):
         for mutate in (lambda s: s['results'].append(deepcopy(s['results'][0])),
                        lambda s: s['results'][0].update(home_goals=None),
                        lambda s: s['results'][0].update(home='changed'),
-                       lambda s: s.update(observed_at_utc='2026-11-01T00:00:00Z')):
+                       lambda s: s.update(observed_at_utc='2026-11-01T00:00:00Z'),
+                       lambda s: s.update(version=True)):
             source = history_snapshot()
             mutate(source)
             with self.assertRaises(ValueError):

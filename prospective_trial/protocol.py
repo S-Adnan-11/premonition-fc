@@ -2,6 +2,8 @@
 from premonition_fc.storage import code_fingerprint, digest, object_digest
 from model_iteration.protocol import source_fingerprint
 from pathlib import Path
+import importlib.metadata
+import platform
 
 MODELS = ('form_poisson', 'team_strength_poisson')
 RULES = {
@@ -25,3 +27,8 @@ RULES = {
 def fingerprints():
     return {'historical': code_fingerprint(), 'iteration': source_fingerprint(),
             'prospective': object_digest({p.name: digest(p) for p in sorted(Path(__file__).parent.glob('*.py'))})}
+
+
+def runtime():
+    return {'python': platform.python_version(), 'lock_sha256': digest(Path(__file__).resolve().parent.parent/'requirements.lock'),
+            'packages': {name: importlib.metadata.version(name) for name in ('numpy','scipy','scikit-learn','threadpoolctl','tzdata')}}
