@@ -35,6 +35,18 @@ def main():
         if name == 'diagnose':
             command.add_argument('--baseline', type=Path, required=True)
         command.set_defaults(function=function)
+    from .experiment import develop, freeze, forecast, evaluate
+    for name, function, inputs in [
+        ('develop', develop, ('prepared', 'baseline', 'protocol')),
+        ('freeze', freeze, ('prepared', 'development', 'protocol')),
+        ('forecast', forecast, ('prepared', 'frozen')),
+        ('score', evaluate, ('forecasts', 'targets', 'frozen', 'baseline')),
+    ]:
+        command = sub.add_parser(name)
+        command.add_argument('--output', type=Path, required=True)
+        for field in inputs:
+            command.add_argument('--'+field, type=Path, required=True)
+        command.set_defaults(function=function)
     args = parser.parse_args()
     args.function(args)
 
