@@ -8,6 +8,7 @@ from premonition_fc.storage import digest, external_directory, object_digest, wr
 from .contracts import LONDON, clock, fields, history, identity, instant, live_gates, slate, snapshot, stamp
 from .models import fit_pair, forecast_pair
 from .protocol import MODELS, RULES, fingerprints, runtime
+from .qualification import qualify
 from .store import append, transaction
 
 
@@ -46,16 +47,23 @@ def approve(path, mode, at, source_id):
     return checked
 
 
-def freeze(ledger, history_path, cutoff, mode, controlled=None, approval_path=None):
+def freeze(ledger, history_path, cutoff, mode, controlled=None, approval_path=None, reference_path=None, decisions_path=None):
     at = clock(mode, controlled)
     cutoff_time = instant(cutoff)
     if cutoff_time > at:
         raise ValueError('Fit cutoff is in the future')
     source, source_sha = read_snapshot(history_path)
     gates = approve(approval_path, mode, at, source['source_id'])
+    qualification = None
+    if mode == 'real' or reference_path is not None:
+        if decisions_path is not None and Path(decisions_path).resolve() == Path(ledger).resolve():
+            raise ValueError('Qualification decisions require a separate ledger')
+        qualification = qualify(reference_path, decisions_path, source, None, mode, cutoff_time, at)
     eligible, excluded = history(source, mode, cutoff_time)
     request = {'history_sha256': source_sha, 'cutoff_at_utc': stamp(cutoff_time),
                'mode': mode, 'rules': RULES, 'code_fingerprints': fingerprints(), 'runtime': runtime()}
+    if qualification is not None:
+        request['reference_sha256'] = qualification['decision']['reference_sha256']
     with transaction(ledger, create=True) as (connection, events):
         if events:
             original = frozen(events)
@@ -65,16 +73,21 @@ def freeze(ledger, history_path, cutoff, mode, controlled=None, approval_path=No
         fit = fit_pair(eligible)
         completed = clock(mode, controlled)
         gates = approve(approval_path, mode, completed, source['source_id'])
+        if qualification is not None:
+            qualification = qualify(reference_path, decisions_path, source, None, mode, cutoff_time, completed,
+                                    expected_sha=request['reference_sha256'])
         payload = {'request': request, 'mode': mode, 'label': 'Synthetic dry run' if mode == 'synthetic' else 'Prospective trial',
                    'frozen_at_utc': stamp(completed), 'cutoff_at_utc': stamp(cutoff_time), 'source_id': source['source_id'],
                    'source_snapshot': source, 'source_snapshot_sha256': source_sha, 'gates': gates,
                    'eligible_history': eligible, 'excluded_history': excluded, 'fit': fit, 'fit_sha256': object_digest(fit),
                    'rules': RULES, 'rules_sha256': object_digest(RULES), 'code_fingerprints': fingerprints(), 'runtime': runtime()}
+        if qualification is not None:
+            payload['qualification'] = qualification
         append(connection, events, 'freeze', 'freeze', payload)
         return payload
 
 
-def issue(ledger, fixture_path, history_path, controlled=None, approval_path=None):
+def issue(ledger, fixture_path, history_path, controlled=None, approval_path=None, reference_path=None, decisions_path=None):
     source, fixture_sha = read_snapshot(fixture_path)
     past, history_sha = read_snapshot(history_path)
     request = {'fixture_snapshot_sha256': fixture_sha, 'history_snapshot_sha256': history_sha}
@@ -82,6 +95,12 @@ def issue(ledger, fixture_path, history_path, controlled=None, approval_path=Non
         freeze_meta = frozen(events)
         mode = freeze_meta['mode']
         at = clock(mode, controlled)
+        qualification_required = mode == 'real' or reference_path is not None or 'qualification' in freeze_meta
+        if qualification_required:
+            if decisions_path is not None and Path(decisions_path).resolve() == Path(ledger).resolve():
+                raise ValueError('Qualification decisions require a separate ledger')
+            if reference_path is not None:
+                request['reference_sha256'] = digest(reference_path)
         key = 'issue:'+str(source.get('slate_id'))
         previous = next((e for e in events if e['key'] == key), None)
         if previous:
@@ -93,6 +112,13 @@ def issue(ledger, fixture_path, history_path, controlled=None, approval_path=Non
             raise ValueError('Snapshot source changed')
         if at <= instant(freeze_meta['frozen_at_utc']):
             raise ValueError('Issue precedes frozen fit')
+        qualification = None
+        previous_reference = None
+        if qualification_required:
+            checked = [e['payload']['qualification'] for e in events if 'qualification' in e['payload']]
+            previous_reference = checked[-1]['decision']['reference'] if checked else None
+            qualification = qualify(reference_path, decisions_path, past, source, mode, at, at,
+                                    previous=previous_reference, frozen_history=freeze_meta['eligible_history'])
         targets, omissions = slate(source, mode, at)
         eligible, excluded = history(past, mode, at)
         known = {r['fixture_id']: r for r in eligible}
@@ -104,6 +130,10 @@ def issue(ledger, fixture_path, history_path, controlled=None, approval_path=Non
             raise ValueError('Fixture is already issued or has a known target result')
         predictions, traces = forecast_pair(freeze_meta['fit'], targets, eligible, at.astimezone(LONDON).date().isoformat())
         completed = clock(mode, controlled)
+        if qualification is not None:
+            qualification = qualify(reference_path, decisions_path, past, source, mode, at, completed,
+                                    previous=previous_reference, frozen_history=freeze_meta['eligible_history'],
+                                    expected_sha=request['reference_sha256'])
         if completed.astimezone(LONDON).date() != at.astimezone(LONDON).date():
             raise ValueError('London cutoff date changed during issuance')
         if source['earliest_verified_kickoff_at_utc'] is not None and completed >= instant(source['earliest_verified_kickoff_at_utc']):
@@ -116,6 +146,8 @@ def issue(ledger, fixture_path, history_path, controlled=None, approval_path=Non
                    'fixture_snapshot': source, 'history_snapshot': past, 'gates': gates,
                    'fixtures': targets, 'omissions': omissions, 'excluded_history': excluded,
                    'forecasts': predictions, 'feature_traces': traces}
+        if qualification is not None:
+            payload['qualification'] = qualification
         append(connection, events, key, 'issue', payload)
         return payload
 
