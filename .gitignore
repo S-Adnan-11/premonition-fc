@@ -24,3 +24,18 @@ reports/
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+
+# Local instruction files
+AGENTS.md
+AGENTS.*.md
+CLAUDE*.md
+GEMINI*.md
+SKILL*.md
+*.instructions.md
+copilot-instructions.md
+.cursorrules
+.agents/
+.codex/
+.claude/
+.cursor/
+.github/instructions/
