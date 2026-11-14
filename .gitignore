@@ -20,3 +20,7 @@ reports/
 *.joblib
 *.pkl
 *.log
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
