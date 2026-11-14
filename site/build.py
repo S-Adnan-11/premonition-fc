@@ -6,13 +6,17 @@ from datetime import date, timedelta
 import hashlib
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 
-from render import render_page
+from render import SOURCE_REVISION, render_archive, render_page, slate_filename
 
 ROOT = Path(__file__).resolve().parent
 VERSION = "premonition-fc.historical-match-view.v1"
+ARCHIVE_VERSION = "premonition-fc.historical-archive.v1"
+SOURCE_FILES = ("forecasts/predictions.json", "forecasts/forecast_manifest.json",
+                "evaluation/scored_holdout.json", "evaluation/metrics.json",
+                "frozen/freeze.json", "frozen/models.joblib", "prepared/holdout_features.json")
 ORDER = ("home_win", "draw", "away_win")
 
 
@@ -180,6 +184,66 @@ def verified_input(path):
     return data
 
 
+def verified_archive(path):
+    """Read a curated archive whose entries pin complete, independently proved slates."""
+    path = Path(path).resolve()
+    archive = read_json(path)
+    object_fields(archive,("schema_version","mode","source_revision","source_hashes","slates"),"archive")
+    if archive["schema_version"]!=ARCHIVE_VERSION or archive["mode"]!="historical_replay":
+        raise BuildError("Expected a historical replay archive")
+    if archive["source_revision"]!=SOURCE_REVISION:
+        raise BuildError("Archive must use the pinned historical source revision")
+    hashes = archive["source_hashes"]
+    object_fields(hashes,SOURCE_FILES,"archive provenance")
+    if any(not isinstance(value,str) or not re.fullmatch(r"[0-9a-f]{64}",value) for value in hashes.values()):
+        raise BuildError("Invalid archive provenance checksum")
+    entries = archive["slates"]
+    if not isinstance(entries,list) or not entries:
+        raise BuildError("Archive must contain at least one complete slate")
+    slates,slate_ids,fixture_ids,inputs = [],set(),set(),set()
+    for entry in entries:
+        object_fields(entry,("input","proof_sha256","fixture_ids"),"archive entry")
+        relative = entry["input"]
+        if not isinstance(relative,str) or not re.fullmatch(r"[A-Za-z0-9_./-]+",relative):
+            raise BuildError("Archive input must be a relative path within its bundle")
+        parts = PurePosixPath(relative)
+        if parts.is_absolute() or any(part in ("",".","..") for part in relative.split("/")) or parts.name!="historical_display_input.json":
+            raise BuildError("Archive input must name a display input within its bundle")
+        source = (path.parent/relative).resolve()
+        if not source.is_relative_to(path.parent) or source in inputs:
+            raise BuildError("Duplicate or escaped archive input")
+        inputs.add(source)
+        proof = source.with_name("proof_manifest.json")
+        if any(not evidence.resolve().is_relative_to(path.parent) for evidence in
+               (proof,source.with_name("display_input.schema.json"))):
+            raise BuildError("Archive evidence must stay within its bundle")
+        if not isinstance(entry["proof_sha256"],str) or not re.fullmatch(r"[0-9a-f]{64}",entry["proof_sha256"]):
+            raise BuildError("Invalid archive proof checksum")
+        try:
+            proof_hash = digest(proof)
+        except OSError as exc:
+            raise BuildError("Missing archive slate proof") from exc
+        if proof_hash!=entry["proof_sha256"]:
+            raise BuildError("Archive proof checksum does not match")
+        manifest = read_json(proof)
+        if not isinstance(manifest,dict) or manifest.get("source_hashes")!=hashes:
+            raise BuildError("Archive slates must share the frozen source provenance")
+        data = verified_input(source)
+        expected = entry["fixture_ids"]
+        if not isinstance(expected,list) or not expected or any(not isinstance(value,str) for value in expected) or len(expected)!=len(set(expected)):
+            raise BuildError("Archive entry needs unique complete fixture membership")
+        actual = {match["fixture_id"] for match in data["matches"]}
+        if actual!=set(expected):
+            raise BuildError("Incomplete or incorrect archive slate membership")
+        identity = data["slate"]["id"]
+        if identity in slate_ids or fixture_ids & actual:
+            raise BuildError("Duplicate archive slate or fixture")
+        slate_ids.add(identity)
+        fixture_ids.update(actual)
+        slates.append(data)
+    return sorted(slates,key=lambda data:data["slate"]["id"],reverse=True)
+
+
 def content_review(html,css,icon):
     body = "\n".join((html,css,icon))
     forbidden = (r"(?<![A-Za-z])[A-Za-z]:[\\/]",r"/(?:Users|home|workspace)/",r"(?:api[_-]?key|raw_payload|source_hashes|models\.joblib)",
@@ -188,7 +252,7 @@ def content_review(html,css,icon):
         raise BuildError("Rendered content contains a prohibited field, path or resource")
 
 
-def build(input_path,output_path):
+def build(input_path,output_path,*,archive=False):
     output = Path(output_path).resolve()
     if output.exists():
         raise BuildError("Use a fresh output directory; existing output is preserved")
@@ -197,28 +261,38 @@ def build(input_path,output_path):
             raise BuildError("Site output must be outside Git worktrees")
     if output==ROOT or ROOT in output.parents:
         raise BuildError("Site output must be outside the source directory")
-    data = verified_input(input_path)
-    html = render_page(data)
+    if archive:
+        slates = verified_archive(input_path)
+        pages = {"index.html":render_archive(slates)}
+        pages.update({slate_filename(data):render_page(data,archive=True) for data in slates})
+    else:
+        slates = [verified_input(input_path)]
+        pages = {"index.html":render_page(slates[0])}
     css = (ROOT/"assets"/"styles.css").read_text(encoding="utf-8")
     icon = (ROOT/"assets"/"favicon.svg").read_text(encoding="utf-8")
-    content_review(html,css,icon)
+    for html in pages.values():
+        content_review(html,css,icon)
     output.mkdir(parents=True)
-    (output/"index.html").write_text(html,encoding="utf-8",newline="\n")
+    for name,html in pages.items():
+        (output/name).write_text(html,encoding="utf-8",newline="\n")
     (output/"styles.css").write_text(css,encoding="utf-8",newline="\n")
     (output/"favicon.svg").write_text(icon,encoding="utf-8",newline="\n")
-    return {"matches":len(data["matches"]),"files":["index.html","styles.css","favicon.svg"]}
+    return {"matches":sum(len(data["matches"]) for data in slates),
+            "slates":len(slates),"files":[*pages,"styles.css","favicon.svg"]}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input",type=Path,required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--input",type=Path)
+    source.add_argument("--archive",type=Path)
     parser.add_argument("--output",type=Path,required=True)
     args = parser.parse_args()
     try:
-        result = build(args.input,args.output)
-    except (BuildError,KeyError,TypeError,ValueError) as exc:
+        result = build(args.archive or args.input,args.output,archive=args.archive is not None)
+    except (BuildError,KeyError,TypeError,ValueError,OSError) as exc:
         raise SystemExit(f"Site build failed: {exc}") from exc
-    print(f"Built {result['matches']} historical matches in three static files.")
+    print(f"Built {result['matches']} historical matches across {result['slates']} slate(s) in {len(result['files'])} static files.")
 
 
 if __name__=="__main__":
