@@ -1,47 +1,19 @@
-"""Build a static historical replay from a verified display contract."""
+"""Build a static historical replay or a fictional prospective preview."""
 from __future__ import annotations
 
 import argparse
 from datetime import date, timedelta
-import hashlib
-import json
 import math
 from pathlib import Path
 import re
 
 from render import render_page
+from display import BuildError, digest, object_fields, read_json
+from preview import render_preview, verified_preview
 
 ROOT = Path(__file__).resolve().parent
 VERSION = "premonition-fc.historical-match-view.v1"
 ORDER = ("home_win", "draw", "away_win")
-
-
-class BuildError(ValueError):
-    """The provided input cannot be rendered as a verified historical replay."""
-
-
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def read_json(path):
-    def unique_pairs(pairs):
-        result = {}
-        for key,value in pairs:
-            if key in result:
-                raise BuildError(f"Duplicate JSON key: {key}")
-            result[key] = value
-        return result
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"),object_pairs_hook=unique_pairs,
-                          parse_constant=lambda value: (_ for _ in ()).throw(BuildError("Non-finite JSON number")))
-    except (OSError,UnicodeError,json.JSONDecodeError) as exc:
-        raise BuildError(f"Cannot read {Path(path).name}: {exc.__class__.__name__}") from exc
-
-
-def object_fields(value,expected,label):
-    if not isinstance(value,dict) or set(value)!=set(expected):
-        raise BuildError(f"{label}: missing or unexpected fields")
 
 
 def check_schema(value,schema,path="input"):
@@ -188,7 +160,7 @@ def content_review(html,css,icon):
         raise BuildError("Rendered content contains a prohibited field, path or resource")
 
 
-def build(input_path,output_path):
+def build(input_path,output_path,*,preview=False):
     output = Path(output_path).resolve()
     if output.exists():
         raise BuildError("Use a fresh output directory; existing output is preserved")
@@ -197,8 +169,8 @@ def build(input_path,output_path):
             raise BuildError("Site output must be outside Git worktrees")
     if output==ROOT or ROOT in output.parents:
         raise BuildError("Site output must be outside the source directory")
-    data = verified_input(input_path)
-    html = render_page(data)
+    data = verified_preview(input_path) if preview else verified_input(input_path)
+    html = render_preview(data) if preview else render_page(data)
     css = (ROOT/"assets"/"styles.css").read_text(encoding="utf-8")
     icon = (ROOT/"assets"/"favicon.svg").read_text(encoding="utf-8")
     content_review(html,css,icon)
@@ -211,14 +183,17 @@ def build(input_path,output_path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input",type=Path,required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--input",type=Path)
+    source.add_argument("--preview",type=Path)
     parser.add_argument("--output",type=Path,required=True)
     args = parser.parse_args()
     try:
-        result = build(args.input,args.output)
-    except (BuildError,KeyError,TypeError,ValueError) as exc:
+        result = build(args.preview or args.input,args.output,preview=args.preview is not None)
+    except (BuildError,KeyError,TypeError,ValueError,OSError) as exc:
         raise SystemExit(f"Site build failed: {exc}") from exc
-    print(f"Built {result['matches']} historical matches in three static files.")
+    mode = "fictional preview" if args.preview else "historical replay"
+    print(f"Built {result['matches']} {mode} matches in three static files.")
 
 
 if __name__=="__main__":
