@@ -1,5 +1,5 @@
 """Semantic, script-free match-view rendering."""
-from datetime import date
+from datetime import date, datetime
 from html import escape
 from itertools import groupby
 
@@ -43,14 +43,31 @@ def badge(kind,mark):
     return f'<span class="mark mark-{mark}" data-mark="{kind}"><span class="mark-icon" aria-hidden="true"></span> {label}: {mark.capitalize()}</span>'
 
 
-def render_match(match):
+def render_match(match,*,preview=False):
     home,away = escape(match["home"]["name"]),escape(match["away"]["name"])
-    identity = "match-"+match["fixture_id"].replace(":","-")
+    identity = "match-"+match["fixture_id"].replace(":","--" if preview else "-")
     heading = identity+"-title"
     probabilities = match["forecast"]["probabilities"]
     scores = match["forecast"]["scorelines"]
     actual = match["actual_full_time"]
-    final_label = "Full-time draw" if actual["home_goals"]==actual["away_goals"] else "Full time"
+    if actual is not None:
+        final_label = "Full-time draw" if actual["home_goals"]==actual["away_goals"] else "Full time"
+        result = f'<strong class="actual-score" data-actual-score>{score_label(actual)}</strong><span class="full-time">{final_label}</span>'
+    else:
+        state = {"scheduled":"Scheduled · Pending", "postponed":"Postponed · Pending",
+                 "cancelled":"Cancelled · Void", "unresolved":"Unresolved · Pending"}[match["status"]]
+        result = f'<strong class="result-state" data-result-state>{state}</strong>'
+    metadata = ""
+    model_label = "Team-strength Poisson" if preview else "Poisson model"
+    if preview:
+        def time(value):
+            label = datetime.fromisoformat(value.replace("Z","+00:00")).strftime("%d %B %Y, %H:%M:%S UTC")
+            return f'<time datetime="{value}">{label}</time>'
+        original = match["original_kickoff_at_utc"]
+        changed = f'<span>Originally scheduled {time(original)}</span>' if original != match["kickoff_at_utc"] else ''
+        metadata = f'''<div class="fixture-meta"><a class="fixture-link" href="#{identity}">Fixture link</a>
+          <span>Kickoff {time(match['kickoff_at_utc'])}</span><span>Issued {time(match['issued_at_utc'])}</span>{changed}</div>'''
+    verdict = (badge('outcome',match['marks']['outcome'])+badge('exact_score',match['marks']['exact_score'])) if match['marks'] is not None else ''
     probability_cells = []
     for key,label in zip(ORDER,("Home win","Draw","Away win")):
         value = probabilities[key]
@@ -63,16 +80,17 @@ def render_match(match):
           <span class="exact-score">{score_label(score)}</span><span class="score-probability">{score['probability']*100:.1f}%</span></li>''')
     return f'''<article class="match-card" id="{identity}" data-fixture-id="{escape(match['fixture_id'],quote=True)}" aria-labelledby="{heading}">
       <h4 class="sr-only" id="{heading}">{home} versus {away}</h4>
+      {metadata}
       <details name="prediction">
         <summary>
           <span class="fixture-teams"><span data-home-name>{home}</span><span class="versus">vs</span><span data-away-name>{away}</span></span>
           <span class="forecast-glance"><span class="glance-label">Model forecast</span><strong data-predicted-outcome>{escape(outcome_label(match))}</strong><span class="top-score">Top score <b data-predicted-score>{score_label(scores[0])}</b></span></span>
-          <span class="actual-glance"><span class="glance-label">Actual result</span><strong class="actual-score" data-actual-score>{score_label(actual)}</strong><span class="full-time">{final_label}</span></span>
+          <span class="actual-glance"><span class="glance-label">Actual result</span>{result}</span>
           <span class="summary-action">View prediction <span class="disclosure-icon" aria-hidden="true">+</span></span>
         </summary>
         <div class="prediction-detail">
           <section class="outcomes" aria-label="Outcome probabilities for {home} versus {away}">
-            <div class="detail-heading"><h5>Outcome probabilities</h5><span>Poisson model</span></div>
+            <div class="detail-heading"><h5>Outcome probabilities</h5><span>{model_label}</span></div>
             <dl class="probability-grid">{''.join(probability_cells)}</dl>
             <p class="detail-note">Home win, draw and away win include all possible scorelines.</p>
           </section>
@@ -82,7 +100,7 @@ def render_match(match):
           </section>
         </div>
       </details>
-      <div class="match-verdict" role="group" aria-label="Forecast correctness">{badge('outcome',match['marks']['outcome'])}{badge('exact_score',match['marks']['exact_score'])}</div>
+      {f'<div class="match-verdict" role="group" aria-label="Forecast correctness">{verdict}</div>' if verdict else ''}
     </article>'''
 
 
