@@ -36,7 +36,7 @@ def schema_for(value):
     return {"type":"number","minimum":0,"maximum":1}
 
 
-def save_input(folder,data=None):
+def save_input(folder,data=None,*,source_hashes=None):
     folder = Path(folder)
     folder.mkdir(parents=True,exist_ok=True)
     data = deepcopy(sample() if data is None else data)
@@ -49,7 +49,34 @@ def save_input(folder,data=None):
         "outcome_correct":sum(m["marks"]["outcome"]=="correct" for m in data["matches"]),
         "exact_score_correct":sum(m["marks"]["exact_score"]=="correct" for m in data["matches"]),
         "completed_zero_zero_fixtures":sum(m["actual_full_time"]=={"home_goals":0,"away_goals":0} for m in data["matches"]),
-        "source_hashes":{"frozen/models.joblib":"ab"*32},
+        "source_hashes":source_hashes if source_hashes is not None else {"frozen/models.joblib":"ab"*32},
         "output_hashes":{"historical_display_input.json":hashlib.sha256(source.read_bytes()).hexdigest(),"display_input.schema.json":hashlib.sha256(schema.read_bytes()).hexdigest()}}
     (folder/"proof_manifest.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
     return source
+
+
+def save_archive(folder):
+    folder = Path(folder)
+    hashes = {name:"ab"*32 for name in (
+        "forecasts/predictions.json","forecasts/forecast_manifest.json","evaluation/scored_holdout.json",
+        "evaluation/metrics.json","frozen/freeze.json","frozen/models.joblib","prepared/holdout_features.json")}
+    second = sample()
+    second["slate"] = {"id":"2025-26:2025-08-19","start_date_london":"2025-08-19",
+        "end_date_london":"2025-08-25","simulated_issue_date_london":"2025-08-22"}
+    for match,day,clubs in zip(second["matches"],("2025-08-22","2025-08-23"),
+            (("Orchard Town","Fen Athletic"),("Hill City","Brook United"))):
+        match["played_date_london"] = day
+        for side,name in zip(("home","away"),clubs):
+            match[side] = {"id":name.lower().replace(" ","-"),"name":name}
+        match["fixture_id"] = ":".join((second["season"],match["home"]["id"],match["away"]["id"]))
+    entries = []
+    for data in (sample(),second):
+        source = save_input(folder/"slates"/data["slate"]["start_date_london"],data,source_hashes=hashes)
+        entries.append({"input":source.relative_to(folder).as_posix(),
+            "proof_sha256":hashlib.sha256(source.with_name("proof_manifest.json").read_bytes()).hexdigest(),
+            "fixture_ids":sorted(match["fixture_id"] for match in data["matches"])})
+    archive = {"schema_version":"premonition-fc.historical-archive.v1","mode":"historical_replay",
+        "source_revision":"e6744429ee395bc86f247348c6184bb08d4eb361","source_hashes":hashes,"slates":entries}
+    path = folder/"archive.json"
+    path.write_text(json.dumps(archive,indent=2)+"\n",encoding="utf-8")
+    return path

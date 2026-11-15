@@ -6,6 +6,15 @@ from itertools import groupby
 ORDER = ("home_win","draw","away_win")
 MONTHS = ("January","February","March","April","May","June","July","August","September","October","November","December")
 WEEKDAYS = ("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+SOURCE_REVISION = "e6744429ee395bc86f247348c6184bb08d4eb361"
+
+
+def slate_filename(data):
+    return f"slate-{data['season']}-{data['slate']['start_date_london']}.html"
+
+
+def credit_footer():
+    return f'''<footer class="site-footer wrap"><div><span class="footer-brand">Premonition-FC</span><p>A study in football probabilities.</p></div><div class="data-credit"><p>Historical data from <a href="https://github.com/openfootball/football.json/tree/{SOURCE_REVISION}" rel="noreferrer">OpenFootball <span aria-hidden="true">↗</span></a></p><p>Data terms: <a href="https://creativecommons.org/publicdomain/zero/1.0/" rel="noreferrer">CC0 1.0</a> · Historical replay</p></div></footer>'''
 
 
 def day_label(value,weekday=False):
@@ -95,7 +104,7 @@ def render_match(match,*,preview=False):
     </article>'''
 
 
-def render_page(data):
+def render_page(data,*,archive=False):
     matches = sorted(data["matches"],key=lambda m:(m["played_date_london"],m["fixture_id"]))
     dates = sorted({m["played_date_london"] for m in matches})
     first,last = dates[0],dates[-1]
@@ -104,6 +113,9 @@ def render_page(data):
     total = len(matches)
     correct = sum(m["marks"]["outcome"]=="correct" for m in matches)
     exact = sum(m["marks"]["exact_score"]=="correct" for m in matches)
+    archive_nav = '<a href="index.html">Archive</a>' if archive else ''
+    back_link = '<div class="wrap archive-return"><a class="back-to-archive" href="index.html">Back to archive</a></div>' if archive else ''
+    kicker = "This slate, revisited." if archive else "The opening slate, revisited."
     date_links = []
     groups = []
     for day,fixtures in groupby(matches,key=lambda m:m["played_date_london"]):
@@ -129,13 +141,14 @@ def render_page(data):
   <a class="skip-link" href="#matches">Skip to matches</a>
   <header class="site-header wrap">
     <a class="brand" href="./" aria-label="Premonition-FC home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Premonition<span class="brand-fc">-FC</span></a>
-    <nav aria-label="Main navigation"><a href="#matches">Matches</a><a href="#guide">The guide <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Main navigation">{archive_nav}<a href="#matches">Matches</a><a href="#guide">The guide <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main>
+    {back_link}
     <section class="hero wrap" aria-labelledby="page-title">
       <div class="hero-copy">
         <div class="eyebrow"><span class="mode-label"><span aria-hidden="true"></span>Historical replay</span><span class="competition-label">Premier League · 2025/26</span></div>
-        <p class="kicker">The opening slate, revisited.</p>
+        <p class="kicker">{kicker}</p>
         <h1 id="page-title">{escape(period)}</h1>
         <p class="hero-description">Frozen Poisson forecasts from a retrospective backtest, alongside the actual full-time results.</p>
         <dl class="issue-meta"><div><dt>Simulated issue date</dt><dd><time datetime="{issue}">{day_label(issue)}</time></dd></div><div><dt>Presentation model</dt><dd>Poisson</dd></div></dl>
@@ -156,7 +169,62 @@ def render_page(data):
       <div class="guide-copy"><h3>One scoreline. Three possible results.</h3><p>The most probable exact score is one possible score. Home-win, draw and away-win probabilities add up all scorelines for each result, so the top outcome can differ from the result implied by the top scoreline.</p><h3>A backtest with a shared date.</h3><p>Every match here uses {day_label(issue)} as its simulated issue date, with eligible earlier results as model inputs. This is a historical replay rather than a real pre-kickoff forecast record.</p><p class="rounding-note">Percentages are rounded for display. Rankings and correctness marks use the original frozen values.</p></div>
     </div></section>
   </main>
-  <footer class="site-footer wrap"><div><span class="footer-brand">Premonition-FC</span><p>A study in football probabilities.</p></div><div class="data-credit"><p>Historical data from <a href="https://github.com/openfootball/football.json/tree/e6744429ee395bc86f247348c6184bb08d4eb361" rel="noreferrer">OpenFootball <span aria-hidden="true">↗</span></a></p><p>Data terms: <a href="https://creativecommons.org/publicdomain/zero/1.0/" rel="noreferrer">CC0 1.0</a> · Historical replay</p></div></footer>
+  {credit_footer()}
+</body>
+</html>
+'''
+
+
+def render_archive(slates):
+    cards = []
+    for data in slates:
+        dates = sorted(match["played_date_london"] for match in data["matches"])
+        period = range_label(dates[0],dates[-1])
+        issue = data["slate"]["simulated_issue_date_london"]
+        cards.append(f'''<li><a class="archive-link" data-slate-id="{escape(data['slate']['id'],quote=True)}" href="{slate_filename(data)}">
+          <span class="section-kicker">Historical replay · {len(dates)} matches</span>
+          <h3>{escape(period)}</h3>
+          <span class="archive-issue">Simulated issue date <time datetime="{issue}">{day_label(issue)}</time></span>
+          <span class="archive-action">Open slate <span aria-hidden="true">↗</span></span>
+        </a></li>''')
+    return f'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse Premonition-FC’s historical Premier League replays, with saved Poisson forecasts and actual results for each slate.">
+  <meta name="color-scheme" content="light">
+  <title>Historical replay archive · Premonition-FC</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#slates">Skip to slates</a>
+  <header class="site-header wrap">
+    <a class="brand" href="./" aria-label="Premonition-FC home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Premonition<span class="brand-fc">-FC</span></a>
+    <nav aria-label="Main navigation"><a href="index.html" aria-current="page">Archive</a><a href="#archive-guide">The guide <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main>
+    <section class="hero archive-hero wrap" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="mode-label"><span aria-hidden="true"></span>Historical replay</span><span class="competition-label">Premier League · 2025/26</span></div>
+        <p class="kicker">A matchday notebook.</p>
+        <h1 id="page-title">The replay archive.</h1>
+        <p class="hero-description">Choose a slate to explore its frozen Poisson forecasts alongside the actual full-time results.</p>
+      </div>
+      <aside class="archive-note"><p class="section-kicker">Saved for a closer look</p><p class="archive-count">{len(slates):02d} <span>{'slate' if len(slates)==1 else 'slates'}</span></p><p>Each replay keeps its own simulated issue date and original predictions.</p></aside>
+    </section>
+    <section class="fixtures-section wrap" id="slates" tabindex="-1" aria-labelledby="slates-title">
+      <div class="section-header"><div><p class="section-kicker">Browse by date</p><h2 id="slates-title">Saved slates</h2></div></div>
+      <p class="section-description">Latest first. Open a slate, then choose any match to see the saved prediction.</p>
+      <ul class="archive-grid">{''.join(cards)}</ul>
+    </section>
+    <section class="guide-section" id="archive-guide" aria-labelledby="guide-title"><div class="guide-inner wrap">
+      <div><p class="section-kicker">A little context</p><h2 id="guide-title">How to read<br>the archive.</h2></div>
+      <div class="guide-copy"><h3>A historical replay with a shared date.</h3><p>These saved forecasts come from a retrospective backtest. Every match in a slate shares a simulated issue date, using eligible earlier results as model inputs. Each slate is labelled with that date.</p><h3>Open the match. See the forecast.</h3><p>Each match card shows its actual result and separate outcome and exact-score marks. Open it to inspect all three outcome probabilities and the three ranked scorelines from the saved forecast.</p></div>
+    </div></section>
+  </main>
+  {credit_footer()}
 </body>
 </html>
 '''
