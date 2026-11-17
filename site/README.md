@@ -1,7 +1,7 @@
 # Premonition historical replay website
 # Static match website
 
-This is a script-free static match view built with Python's standard library. The forecasting package and its fitted models are separate from this directory.
+This is a script-free static match view built with Python's standard library. The forecasting package and its fitted models are separate from this directory. Choose exactly one source mode: `--input` for a single historical slate, `--archive` for a historical archive, or `--preview` for a fictional upcoming/results snapshot. All three share the same output protections and renderer.
 
 The builder reads a verified historical display input plus the adjoining `display_input.schema.json` and `proof_manifest.json`. It checks their checksums, schema, historical mode, fixture identities, probabilities, scoreline ranking, simulated date, actual scores and correctness marks before rendering.
 
