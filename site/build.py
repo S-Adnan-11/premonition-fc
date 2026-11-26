@@ -225,7 +225,7 @@ def content_review(html,css,icon):
         raise BuildError("Rendered content contains a prohibited field, path or resource")
 
 
-def build(input_path,output_path,*,archive=False,preview=False,issued=False,record_path=None,record_sha256=None):
+def build(input_path,output_path,*,archive=False,preview=False,issued=False,record_path=None,record_sha256=None,results_path=None):
     output = Path(output_path).resolve()
     if output.exists():
         raise BuildError("Use a fresh output directory; existing output is preserved")
@@ -234,10 +234,10 @@ def build(input_path,output_path,*,archive=False,preview=False,issued=False,reco
             raise BuildError("Site output must be outside Git worktrees")
     if output==ROOT or ROOT in output.parents:
         raise BuildError("Site output must be outside the source directory")
-    if sum((archive, preview, issued)) > 1 or (not issued and (record_path is not None or record_sha256 is not None)):
+    if sum((archive, preview, issued)) > 1 or (not issued and (record_path is not None or record_sha256 is not None or results_path is not None)):
         raise BuildError("Choose one source mode; original record options require genuine issuance")
     if issued:
-        slates = [verified_issued(input_path,record_path,record_sha256)]
+        slates = [verified_issued(input_path,record_path,record_sha256,results_path=results_path)]
         pages = {"index.html":render_issued(slates[0])}
     elif preview:
         slates = [verified_preview(input_path)]
@@ -271,12 +271,13 @@ def main():
     source.add_argument("--issued",type=Path)
     parser.add_argument("--record",type=Path,help="Original opening events export for genuine issuance")
     parser.add_argument("--record-sha256",help="Original export pin from an independently trusted checkpoint")
+    parser.add_argument("--results",type=Path,help="Explicit reviewed factual snapshot history for genuine issuance")
     parser.add_argument("--output",type=Path,required=True)
     args = parser.parse_args()
     try:
         result = build(args.issued or args.preview or args.archive or args.input,args.output,
                        archive=args.archive is not None,preview=args.preview is not None,issued=args.issued is not None,
-                       record_path=args.record,record_sha256=args.record_sha256)
+                       record_path=args.record,record_sha256=args.record_sha256,results_path=args.results)
     except (BuildError,KeyError,TypeError,ValueError,OSError) as exc:
         raise SystemExit(f"Site build failed: {exc}") from exc
     print(f"Built {result['matches']} matches across {result['slates']} slate(s) in {len(result['files'])} static files.")

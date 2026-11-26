@@ -148,7 +148,7 @@ def display_input(record_path, record_sha256):
     return {"schema_version": VERSION, "mode": MODE, "display_sha256": object_digest(data), "display": data}
 
 
-def verified_issued(path, record_path, record_sha256):
+def verified_issued(path, record_path, record_sha256, *, results_path=None):
     if record_path is None:
         raise BuildError("Genuine issuance requires the separately pinned original record")
     source = read_json(path)
@@ -168,12 +168,21 @@ def verified_issued(path, record_path, record_sha256):
     if data != expected:
         raise BuildError("Display differs from the original issue record")
     # No provenance envelopes, paths, paired alternative or fitted parameters reach rendering.
-    return {key: value for key, value in data.items() if key != "source"} | {
+    display = {key: value for key, value in data.items() if key != "source"} | {
         "matches": [{**match, "marks": None} for match in data["matches"]]}
+    if results_path is not None:
+        from results import apply_results
+        display = apply_results(display, results_path, data["source"]["issue_event_hash"])
+    return display
 
 
 def render_issued(data):
     cards = "".join(render_match(match, issued=True) for match in data["matches"])
+    updated = data.get("results_updated", False)
+    result_description = ("Results reflect a separately reviewed factual snapshot. Unresolved results have no final score or correctness marks. "
+                          if updated else "All ten results remain pending in this saved snapshot. ")
+    result_guide = ("Final scores and played dates come from separately reviewed official facts. Outcome and exact-score marks use the original forecast. Unresolved facts have no final score or marks."
+                    if updated else "Viewing a prediction opens saved content. It makes no request and runs no model. Pending fixtures have no full-time score or correctness marks.")
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Original opening forecasts saved before kickoff, shown from a saved snapshot.">
@@ -188,10 +197,10 @@ def render_issued(data):
 <aside class="preview-note"><h2>A saved snapshot.</h2><p>Scores and statuses reflect the saved snapshot as of {render_time(data['snapshot_as_of_utc'])}. This page is not a live score feed.</p>
 <p>Schedule checked at issuance. Source observation: {render_time(data['schedule_observed_at_utc'])}. These scheduled kickoffs have not been rechecked for this page.</p></aside></section>
 <section class="fixtures-section wrap" id="matches" tabindex="-1" aria-labelledby="matches-title"><div class="section-header"><h2 id="matches-title">Opening slate</h2></div>
-<p class="section-description">All ten results remain pending in this saved snapshot. Choose View prediction to expand a forecast. Every timestamp is shown in UTC.</p>
+<p class="section-description">{result_description}Choose View prediction to expand a forecast. Every timestamp is shown in UTC.</p>
 <section class="matchday" aria-labelledby="opening-title"><h3 id="opening-title" class="section-kicker">Original issued fixtures</h3><div class="match-list">{cards}</div></section></section>
 <section class="guide-section" id="guide" aria-labelledby="guide-title"><div class="guide-inner wrap"><h2 id="guide-title">Read the saved forecast.</h2><div class="guide-copy">
-<h3>The original prediction stays.</h3><p>Viewing a prediction opens saved content. It makes no request and runs no model. Pending fixtures have no full-time score or correctness marks.</p>
+<h3>The original prediction stays.</h3><p>{result_guide}</p>
 <h3>Three outcomes, three scorelines.</h3><p>Home win, draw and away win cover all possible scores. The three ranked scorelines show the most likely exact scores from the original forecast.</p>
 <p class="rounding-note">Percentages are rounded for display. Rankings use the original unrounded values.</p></div></div></section></main>
 <footer class="site-footer wrap"><div><span class="footer-brand">Premonition-FC</span><p>Issued forecasts · Private review snapshot.</p></div><div class="data-credit"><p>Fixture data: <a href="https://highlightly.net/football" rel="noreferrer">Highlightly</a></p><p>Schedule checked against official league and club sources at issuance.</p></div></footer></body></html>

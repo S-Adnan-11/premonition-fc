@@ -71,6 +71,15 @@ def render_match(match,*,preview=False,issued=False):
         metadata = f'''<div class="fixture-meta"><a class="fixture-link" href="#{identity}">Fixture link</a><a href="#matches">Back to slate</a>
           <span>Kickoff checked at issuance {render_time(match['kickoff_at_utc'])}</span><span>Issued {render_time(match['issued_at_utc'])}</span>
           <span>Schedule source observed {render_time(match['schedule_checked_at_utc'])}</span></div>'''
+        if "result_reviewed_at_utc" in match:
+            extra = f'<span>Result reviewed {render_time(match["result_reviewed_at_utc"])}</span>'
+            if match["played_date_london"] is not None:
+                played = escape(match["played_date_london"], quote=True)
+                extra += f'<span>Played <time datetime="{played}">{day_label(played)}</time> (London date)</span>'
+            reviewed_kickoff = match["reviewed_kickoff_at_utc"]
+            if reviewed_kickoff is not None and reviewed_kickoff != match["kickoff_at_utc"]:
+                extra += f'<span>Reviewed scheduled kickoff {render_time(reviewed_kickoff)}</span>'
+            metadata = metadata.removesuffix("</div>")+extra+"</div>"
     elif preview:
         original = match["original_kickoff_at_utc"]
         changed = f'<span>Originally scheduled {render_time(original)}</span>' if original != match["kickoff_at_utc"] else ''
