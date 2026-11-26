@@ -43,9 +43,17 @@ def badge(kind,mark):
     return f'<span class="mark mark-{mark}" data-mark="{kind}"><span class="mark-icon" aria-hidden="true"></span> {label}: {mark.capitalize()}</span>'
 
 
-def render_match(match,*,preview=False):
+def render_time(value):
+    stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    label = stamp.strftime("%d %B %Y, %H:%M:%S")
+    if stamp.microsecond:
+        label += f".{stamp.microsecond:06d}"
+    return f'<time datetime="{escape(value, quote=True)}">{label} UTC</time>'
+
+
+def render_match(match,*,preview=False,issued=False):
     home,away = escape(match["home"]["name"]),escape(match["away"]["name"])
-    identity = "match-"+match["fixture_id"].replace(":","--" if preview else "-")
+    identity = "match-"+match["fixture_id"].replace(":","--" if preview or issued else "-")
     heading = identity+"-title"
     probabilities = match["forecast"]["probabilities"]
     scores = match["forecast"]["scorelines"]
@@ -58,15 +66,16 @@ def render_match(match,*,preview=False):
                  "cancelled":"Cancelled · Void", "unresolved":"Unresolved · Pending"}[match["status"]]
         result = f'<strong class="result-state" data-result-state>{state}</strong>'
     metadata = ""
-    model_label = "Team-strength Poisson" if preview else "Poisson model"
-    if preview:
-        def time(value):
-            label = datetime.fromisoformat(value.replace("Z","+00:00")).strftime("%d %B %Y, %H:%M:%S UTC")
-            return f'<time datetime="{value}">{label}</time>'
+    model_label = "Team-strength Poisson" if preview or issued else "Poisson model"
+    if issued:
+        metadata = f'''<div class="fixture-meta"><a class="fixture-link" href="#{identity}">Fixture link</a><a href="#matches">Back to slate</a>
+          <span>Kickoff checked at issuance {render_time(match['kickoff_at_utc'])}</span><span>Issued {render_time(match['issued_at_utc'])}</span>
+          <span>Schedule source observed {render_time(match['schedule_checked_at_utc'])}</span></div>'''
+    elif preview:
         original = match["original_kickoff_at_utc"]
-        changed = f'<span>Originally scheduled {time(original)}</span>' if original != match["kickoff_at_utc"] else ''
+        changed = f'<span>Originally scheduled {render_time(original)}</span>' if original != match["kickoff_at_utc"] else ''
         metadata = f'''<div class="fixture-meta"><a class="fixture-link" href="#{identity}">Fixture link</a>
-          <span>Kickoff {time(match['kickoff_at_utc'])}</span><span>Issued {time(match['issued_at_utc'])}</span>{changed}</div>'''
+          <span>Kickoff {render_time(match['kickoff_at_utc'])}</span><span>Issued {render_time(match['issued_at_utc'])}</span>{changed}</div>'''
     verdict = (badge('outcome',match['marks']['outcome'])+badge('exact_score',match['marks']['exact_score'])) if match['marks'] is not None else ''
     probability_cells = []
     for key,label in zip(ORDER,("Home win","Draw","Away win")):
