@@ -156,7 +156,8 @@ def reviewed_results(path, original):
                 validate_score(row["actual_full_time"])
                 played = date.fromisoformat(row["played_date_london"])
                 season = original["season"]
-                if played.isoformat() != row["played_date_london"] or row["precision"] != "date" or not date(int(season[:4]), 7, 1) <= played <= min(date(int(season[:4])+1, 6, 30), checked.astimezone(ZoneInfo("Europe/London")).date()):
+                issue_day = utc(original["issued_at_utc"]).astimezone(ZoneInfo("Europe/London")).date()
+                if played.isoformat() != row["played_date_london"] or row["precision"] != "date" or not max(date(int(season[:4]), 7, 1), issue_day) <= played <= min(date(int(season[:4])+1, 6, 30), checked.astimezone(ZoneInfo("Europe/London")).date()):
                     raise BuildError("A final score requires a verified actual London played date")
             elif row["actual_full_time"] is not None or row["played_date_london"] is not None:
                 raise BuildError("Unfinished, unresolved or void fixtures cannot have final scores or played dates")

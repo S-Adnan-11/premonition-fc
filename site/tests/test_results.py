@@ -6,6 +6,7 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build import BuildError, build
 from display import digest, read_json
 from issued import verified_issued
@@ -82,6 +83,7 @@ class ResultTests(unittest.TestCase):
                    lambda d:d["documents"][0].update(observed_at_utc="2026-11-25T12:00:00Z"),
                    lambda d:d["results"][0].update(precision="scheduled_date"),
                    lambda d:d["results"][0].update(played_date_london="2026-11-30"),
+                   lambda d:d["results"][0].update(played_date_london="2026-11-01"),
                    lambda d:d["results"][0].update(verified_at_utc="2026-11-24T09:00:00Z"))
         for change in changes:
             write_json(self.results.parent/"reviewed_facts.json", old); change_review(self.results, change)
