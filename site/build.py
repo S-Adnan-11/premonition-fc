@@ -8,7 +8,6 @@ from pathlib import Path, PurePosixPath
 import re
 
 from render import SOURCE_REVISION, render_archive, render_page, slate_filename
-from render import render_page
 from display import BuildError, digest, object_fields, read_json
 from preview import render_preview, verified_preview
 
@@ -225,8 +224,7 @@ def content_review(html,css,icon):
         raise BuildError("Rendered content contains a prohibited field, path or resource")
 
 
-def build(input_path,output_path,*,archive=False):
-def build(input_path,output_path,*,preview=False):
+def build(input_path,output_path,*,archive=False,preview=False):
     output = Path(output_path).resolve()
     if output.exists():
         raise BuildError("Use a fresh output directory; existing output is preserved")
@@ -235,15 +233,16 @@ def build(input_path,output_path,*,preview=False):
             raise BuildError("Site output must be outside Git worktrees")
     if output==ROOT or ROOT in output.parents:
         raise BuildError("Site output must be outside the source directory")
-    if archive:
+    if preview:
+        slates = [verified_preview(input_path)]
+        pages = {"index.html":render_preview(slates[0])}
+    elif archive:
         slates = verified_archive(input_path)
         pages = {"index.html":render_archive(slates)}
         pages.update({slate_filename(data):render_page(data,archive=True) for data in slates})
     else:
         slates = [verified_input(input_path)]
         pages = {"index.html":render_page(slates[0])}
-    data = verified_preview(input_path) if preview else verified_input(input_path)
-    html = render_preview(data) if preview else render_page(data)
     css = (ROOT/"assets"/"styles.css").read_text(encoding="utf-8")
     icon = (ROOT/"assets"/"favicon.svg").read_text(encoding="utf-8")
     for html in pages.values():
@@ -262,22 +261,14 @@ def main():
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--input",type=Path)
     source.add_argument("--archive",type=Path)
-    parser.add_argument("--output",type=Path,required=True)
-    args = parser.parse_args()
-    try:
-        result = build(args.archive or args.input,args.output,archive=args.archive is not None)
-    except (BuildError,KeyError,TypeError,ValueError,OSError) as exc:
-        raise SystemExit(f"Site build failed: {exc}") from exc
-    print(f"Built {result['matches']} historical matches across {result['slates']} slate(s) in {len(result['files'])} static files.")
     source.add_argument("--preview",type=Path)
     parser.add_argument("--output",type=Path,required=True)
     args = parser.parse_args()
     try:
-        result = build(args.preview or args.input,args.output,preview=args.preview is not None)
+        result = build(args.preview or args.archive or args.input,args.output,archive=args.archive is not None,preview=args.preview is not None)
     except (BuildError,KeyError,TypeError,ValueError,OSError) as exc:
         raise SystemExit(f"Site build failed: {exc}") from exc
-    mode = "fictional preview" if args.preview else "historical replay"
-    print(f"Built {result['matches']} {mode} matches in three static files.")
+    print(f"Built {result['matches']} matches across {result['slates']} slate(s) in {len(result['files'])} static files.")
 
 
 if __name__=="__main__":
