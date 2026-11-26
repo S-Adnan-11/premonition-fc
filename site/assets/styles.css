@@ -25,3 +25,4 @@
 .issued-display .fixture-meta,.issued-display .result-state,.issued-display .summary-action,.issued-display .glance-label,.issued-display .top-score,.issued-display .forecast-glance>strong,.issued-display .probability dt,.issued-display .detail-heading>span,.issued-display .detail-note,.issued-display .score-probability,.issued-display .section-description,.issued-display .site-footer p,.issued-display .rounding-note,.issued-display .competition-label,.issued-display .mode-label,.issued-display .site-header nav{font-size:.875rem}
 .issued-display .fixture-meta{gap:10px 24px}.issued-display time{overflow-wrap:anywhere}.issued-display .detail-heading h5,.issued-display .guide-copy h3{font-size:1rem}
 .issued-display .eyebrow,.issued-display .detail-heading{flex-wrap:wrap}.issued-display .preview-note{min-width:0}.issued-display .actual-glance{overflow-wrap:anywhere}
+.issued-display .mark,.issued-display .full-time{font-size:.875rem}
