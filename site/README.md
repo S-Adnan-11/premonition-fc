@@ -1,7 +1,6 @@
-# Premonition historical replay website
-# Static match website
+# Premonition static match website
 
-This is a script-free static match view built with Python's standard library. The forecasting package and its fitted models are separate from this directory. Choose exactly one source mode: `--input` for a single historical slate, `--archive` for a historical archive, or `--preview` for a fictional upcoming/results snapshot. All three share the same output protections and renderer.
+This is a script-free static match view built with Python's standard library. Choose exactly one source mode: `--input` for a single historical slate, `--archive` for a historical archive, `--preview` for a fictional upcoming/results snapshot, or `--issued` for a genuine opening issue snapshot. All four share output protections and the match renderer. The genuine adapter reuses canonical record hashing and club names from the source package; it never loads or runs a fitted model.
 
 The builder reads a verified historical display input plus the adjoining `display_input.schema.json` and `proof_manifest.json`. It checks their checksums, schema, historical mode, fixture identities, probabilities, scoreline ranking, simulated date, actual scores and correctness marks before rendering.
 
@@ -78,7 +77,7 @@ python -B .\site\build.py --preview D:\football-review\fictional\before.json --o
 python -B .\site\build.py --preview D:\football-review\fictional\after.json --output D:\football-review\results
 ```
 
-Both snapshots reference the **same unchanged** adjoining `issued_forecasts.json` and SHA-256. Keep that saved issue file and its pin when assembling later updates. A changed file fails validation. The pin checks integrity against the reviewed snapshot; it does not authenticate an independently edited replacement bundle. No real-input or publication workflow is provided.
+Both snapshots reference the **same unchanged** adjoining `issued_forecasts.json` and SHA-256. Keep that saved issue file and its pin when assembling later updates. A changed file fails validation. The pin checks integrity against the reviewed snapshot; it does not authenticate an independently edited replacement bundle. Genuine inputs use the separate path below. Publication remains a separate decision.
 
 The v1 contract allowlists every field; additional fields fail validation:
 
@@ -108,4 +107,31 @@ Check both built snapshots against the same saved issue file with the installed 
 
 ```powershell
 node .\site\tests\preview_browser_check.mjs --playwright-module D:\football-tools\browser\node_modules\playwright --axe-script D:\football-tools\browser\node_modules\axe-core\axe.min.js --browser-root D:\football-tools\browsers --before D:\football-review\upcoming --after D:\football-review\results --input-before D:\football-review\fictional\before.json --input-after D:\football-review\fictional\after.json --output D:\football-review\preview-browser
+```
+
+## Genuine opening issuance snapshot
+
+The `genuine_issuance` contract is independent of the fictional preview contract. It projects the selected `team_strength_poisson` forecast from the original opening export: exactly one freeze, one genuine issue, ten unique fixtures, and twenty original paired forecast rows. Both models remain in the untouched private record. Assembly checks the event chain, issue/freeze linkage, frozen fit/rules identity, complete issue-time fixture snapshot and both saved models. It copies the selected probabilities and certified three scorelines without recalculation or rounding.
+
+Resolve the original export through its preserved launch report. Reconcile the launch verification's export hashes, original paired record, fit/model identity, official fixture census and scope evidence before assembly. Supply the **original trusted export checksum from that checkpoint** separately from the display input:
+
+```powershell
+python -B .\site\issued.py --record D:\football-review\original-export\events.json --record-sha256 <original-checkpoint-sha256> --output D:\football-review\issued\display.json
+python -B .\site\build.py --issued D:\football-review\issued\display.json --record D:\football-review\original-export\events.json --record-sha256 <original-checkpoint-sha256> --output D:\football-review\issued-site
+```
+
+The assembler preserves existing input files and rejects output in Git worktrees. The builder requires the original record again and independently reconstructs the expected display. Changing a forecast and recomputing the local display checksum still fails against that record. Changing the original record fails its independently supplied pin. These checks establish integrity relative to the trusted checkpoint; replacing both the original export and its trusted checkpoint cannot establish provenance. Keep the trusted checkpoint under separate review and preserve its original evidence.
+
+The display envelope has exactly `schema_version` (`premonition-fc.issued-display.v1`), `mode` (`genuine_issuance`), `display_sha256` (canonical digest of `display`), and `display`. The display contains its label, competition, season, slate identity, selected model, original issue time, saved schedule observation and result snapshot times, source identity pins, and ten allowlisted matches. It must equal the projection of the original record exactly. Matches retain canonical identity, club names/IDs, original issue time, issue-time checked kickoff and schedule check time, saved pending status, null result and original forecast. Other fields, later results, replacement issue times or model choices fail validation.
+
+The page labels the schedule as checked at issuance and gives the actual saved source observation time. Result statuses are explicitly as of the original issue snapshot, even when viewed after those scheduled dates. It shows UTC and preserves the issue timestamp's fractional seconds. Pending fixtures have no actual scores or correctness marks. Each fixture has a stable identity link, a return to the slate, and the existing native prediction disclosure. Percentages alone are rounded for display.
+
+Only `index.html`, `styles.css` and `favicon.svg` are emitted. The builder drops source pins/envelopes, paired alternative forecasts and fitted parameters before rendering; raw exports and display JSON are never copied. The page uses Highlightly fixture credit and explains that it is a saved private snapshot. It makes no provider request or live ledger write and adds no live feed, settlement action or publication command.
+
+Committed source tests use fictional fixtures in the genuine event format. Real export reconciliation and browser evidence stay private. Run the site suite above, smoke-check all four CLI modes, and compare fresh genuine builds byte for byte.
+
+Use the installed external browser tools to compare the page with every original selected record, exercise fixture/return links and keyboard disclosures, and check layout and accessibility at desktop, 390px and 320px:
+
+```powershell
+node .\site\tests\issued_browser_check.mjs --playwright-module D:\football-tools\browser\node_modules\playwright --axe-script D:\football-tools\browser\node_modules\axe-core\axe.min.js --browser-root D:\football-tools\browsers --site D:\football-review\issued-site --input D:\football-review\issued\display.json --record D:\football-review\original-export\events.json --output D:\football-review\issued-browser
 ```
