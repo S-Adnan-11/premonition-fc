@@ -15,6 +15,12 @@ const {chromium} = createRequire(import.meta.url)(path.resolve(options['playwrig
 const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 const events = await json(options.record), input = await json(options.input);
 const issue = events.find(e => e.kind === 'issue').payload, display = input.display;
+let factualReview;
+if (options.results) {
+  const history = await json(options.results), latest = history.reviews.at(-1);
+  factualReview = await json(path.resolve(path.dirname(options.results), latest.file));
+  assert.equal(factualReview.original_issue_event_hash, events.find(e => e.kind === 'issue').event_hash);
+}
 assert.equal(issue.mode, 'real'); assert.equal(input.mode, 'genuine_issuance');
 assert.equal(issue.fixtures.length, 10); assert.equal(display.matches.length, 10);
 assert.equal(new Set(issue.fixtures.map(f => f.fixture_id)).size, 10);
@@ -55,12 +61,13 @@ try {
   assert.match(await page.title(), /Issued forecasts/);
   assert.equal((await page.locator('.mode-label').textContent()).trim(), 'Issued forecasts');
   assert.equal(await page.locator('article').count(), 10);
-  assert.equal(await page.locator('script,[data-actual-score],[data-mark]').count(), 0);
+  assert.equal(await page.locator('script').count(), 0);
+  if (!factualReview) assert.equal(await page.locator('[data-actual-score],[data-mark]').count(), 0);
   const body = await page.locator('body').innerText();
   for (const label of ['Schedule checked at issuance', 'Source observation:', 'saved snapshot as of', 'not a live score feed']) assert(body.includes(label));
   for (const excluded of ['Historical replay', 'Fictional preview', 'form_poisson', 'fit_sha256', 'event_hash']) assert(!body.includes(excluded));
   const snapshotTimes = await page.locator('.preview-note time').evaluateAll(nodes => nodes.map(n => n.dateTime));
-  assert.deepEqual(snapshotTimes, [issue.issued_at_utc, issue.fixture_snapshot.observed_at_utc]);
+  assert.deepEqual(snapshotTimes, [factualReview?.snapshot_as_of_utc || issue.issued_at_utc, issue.fixture_snapshot.observed_at_utc]);
   record('genuine_labels_original_issue_schedule_and_result_snapshot_times');
   for (const fixture of issue.fixtures) {
     const saved = issue.forecasts.find(f => f.fixture_id === fixture.fixture_id && f.model === 'team_strength_poisson');
@@ -74,9 +81,25 @@ try {
     assert.equal(await article.locator('[data-predicted-outcome]').innerText(), chosen === 1 ? 'Draw' : projected[chosen === 0 ? 'home' : 'away'].name+' win');
     assert.equal(await article.locator('[data-predicted-score]').innerText(), `${saved.scorelines[0].home_goals} – ${saved.scorelines[0].away_goals}`);
     const times = await article.locator('.fixture-meta time').evaluateAll(nodes => nodes.map(n => ({stamp:n.dateTime, text:n.textContent})));
-    assert.deepEqual(times.map(t => t.stamp), [fixture.kickoff_at_utc, issue.issued_at_utc, fixture.verified_at_utc]);
-    assert(times.every(t => t.text.endsWith(' UTC')));
-    assert.match(await article.locator('[data-result-state]').innerText(), /Scheduled · Pending/);
+    assert.deepEqual(times.slice(0, 3).map(t => t.stamp), [fixture.kickoff_at_utc, issue.issued_at_utc, fixture.verified_at_utc]);
+    assert(times.filter(t => t.stamp.includes('T')).every(t => t.text.endsWith(' UTC')));
+    const factual = factualReview?.results.find(r => r.fixture_id === fixture.fixture_id);
+    if (factual) {
+      assert.equal(times[3].stamp, factual.verified_at_utc);
+      if (factual.status === 'completed') {
+        const actual = factual.actual_full_time;
+        assert.equal(await article.locator('[data-actual-score]').innerText(), `${actual.home_goals} – ${actual.away_goals}`);
+        assert(times.some(t => t.stamp === factual.played_date_london));
+        const actualOutcome = actual.home_goals > actual.away_goals ? 0 : actual.home_goals === actual.away_goals ? 1 : 2;
+        const exact = saved.scorelines[0].home_goals === actual.home_goals && saved.scorelines[0].away_goals === actual.away_goals;
+        assert.equal((await article.locator('[data-mark="outcome"]').innerText()).trim(), `Outcome: ${chosen === actualOutcome ? 'Correct' : 'Incorrect'}`);
+        assert.equal((await article.locator('[data-mark="exact_score"]').innerText()).trim(), `Exact score: ${exact ? 'Correct' : 'Incorrect'}`);
+      } else {
+        assert.equal(await article.locator('[data-actual-score],[data-mark]').count(), 0);
+        assert.match(await article.locator('[data-result-state]').innerText(), factual.status === 'cancelled' ? /Void/ : /Pending/);
+      }
+      record('reviewed_result_and_independent_marks', {fixture:fixture.fixture_id, status:factual.status});
+    } else assert.match(await article.locator('[data-result-state]').innerText(), /Scheduled · Pending/);
     assert.equal(await article.locator('.fixture-link').getAttribute('href'), '#match-'+fixture.fixture_id.replaceAll(':', '--'));
     await article.locator('summary').click(); assert(await article.locator('.prediction-detail').isVisible());
     for (const [i, key] of ['home_win', 'draw', 'away_win'].entries()) {
