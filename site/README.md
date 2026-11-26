@@ -129,3 +129,9 @@ The page labels the schedule as checked at issuance and gives the actual saved s
 Only `index.html`, `styles.css` and `favicon.svg` are emitted. The builder drops source pins/envelopes, paired alternative forecasts and fitted parameters before rendering; raw exports and display JSON are never copied. The page uses Highlightly fixture credit and explains that it is a saved private snapshot. It makes no provider request or live ledger write and adds no live feed, settlement action or publication command.
 
 Committed source tests use fictional fixtures in the genuine event format. Real export reconciliation and browser evidence stay private. Run the site suite above, smoke-check all four CLI modes, and compare fresh genuine builds byte for byte.
+
+Use the installed external browser tools to compare the page with every original selected record, exercise fixture/return links and keyboard disclosures, and check layout and accessibility at desktop, 390px and 320px:
+
+```powershell
+node .\site\tests\issued_browser_check.mjs --playwright-module D:\football-tools\browser\node_modules\playwright --axe-script D:\football-tools\browser\node_modules\axe-core\axe.min.js --browser-root D:\football-tools\browsers --site D:\football-review\issued-site --input D:\football-review\issued\display.json --record D:\football-review\original-export\events.json --output D:\football-review\issued-browser
+```
